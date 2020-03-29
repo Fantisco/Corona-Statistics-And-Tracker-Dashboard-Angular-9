@@ -24,6 +24,8 @@ import {
 import {
   isUndefined
 } from 'util';
+import { ModalDirective } from 'ngx-bootstrap/modal';
+import { trigger, transition, animate, style, state } from '@angular/animations'
 
 //am4core.useTheme(am4themes_dataviz);
 am4core.useTheme(am4themes_animated);
@@ -31,10 +33,44 @@ am4core.useTheme(am4themes_animated);
 @Component({
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
-  styleUrls: ['./dashboard.component.scss']
+  styleUrls: ['./dashboard.component.scss'],
+  animations: [
+    trigger('fadeInOutAnimation', [
+      state('in', style({opacity: 1})),
+      transition(':enter', [
+        style({opacity: 0}),
+        animate(600 )
+      ])
+    ])
+  ]
 })
 export class DashboardComponent implements OnInit, AfterViewInit {
   @ViewChild(PerfectScrollbarComponent) public directiveScroll: PerfectScrollbarComponent;
+  @ViewChild('autoShownModal', { static: false }) autoShownModal: ModalDirective;
+  isModalShown = false;
+  public modalStep = 1;
+  showModal(): void {
+    this.modalStep = 1;
+    this.isModalShown = true;
+  }
+ 
+  hideModal(): void {
+    this.autoShownModal.hide();
+  }
+ 
+  onHidden(): void {
+    this.isModalShown = false;
+  }
+  nextStep(){
+    this.modalStep+=1;
+  }
+  close(dontShow){
+    if(dontShow){
+      localStorage.setItem("dontShow","true");
+    }
+    this.hideModal();
+  }
+
   public fuse: any;
   public fuseResults: any[];
 
@@ -49,6 +85,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private lineChart: am4charts.XYChart;
   private radarChart: am4charts.RadarChart;
   public isLoading: boolean = true;
+  public isLoadingMap: boolean = true;
   public isLoadingCountries: boolean = true;
 
   public totalCases;
@@ -62,8 +99,6 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   public finishedCases;
 
   public sortType = "todayCases";
-  public timer: any;
-  public oldDate = new Date(("2019-12-01"));
 
   public countryCodes = {
     'Afghanistan': 'AF',
@@ -367,26 +402,12 @@ export class DashboardComponent implements OnInit, AfterViewInit {
       }
     });
   }
-  dhms(difference) {
-    var days, hours, mins, secs;
-    days = Math.floor(difference / (60 * 60 * 1000 * 24) * 1);
-    hours = Math.floor((difference % (60 * 60 * 1000 * 24)) / (60 * 60 * 1000) * 1);
-    mins = Math.floor(((difference % (60 * 60 * 1000 * 24)) % (60 * 60 * 1000)) / (60 * 1000) * 1);
-    secs = Math.floor((((difference % (60 * 60 * 1000 * 24)) % (60 * 60 * 1000)) % (60 * 1000)) / 1000 * 1);
-
-    return {
-      days: days,
-      hours: hours,
-      minutes: mins,
-      seconds: secs
-    };
-  }
 
 
   async ngOnInit() {
-    setInterval(() => {
-      this.timer = this.dhms(Math.floor((new Date().getTime() - this.oldDate.getTime())));
-    }, 1000)
+    if(!localStorage.getItem("dontShow")){
+      this.showModal();
+    }
     this.zone.runOutsideAngular(async () => {
       combineLatest(
         this._getDataService.getAll(this.sortType),
@@ -395,6 +416,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
      .subscribe(([getAllData, getTimelineData]) => {
       this.isLoading = false;
       this.isLoadingCountries = false;
+      this.isLoadingMap = false;
       this.countries = getAllData;
       this.totalCases = this.calculateSum("cases");
       this.totalDeaths = this.calculateSum("deaths");
@@ -416,7 +438,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         ]
       });
       this.timeLine = getTimelineData;
-      this.loadLineChart();
+      this.loadLineChart(false);
       this.loadRadar();
       this.loadPieChart();
 
@@ -471,7 +493,12 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
     this.loadMap("cases");
   }
-  loadLineChart() {
+
+  loadLineChart(chartType) {
+    this.caseData = [];
+    if (this.lineChart) {
+      this.lineChart.dispose();
+    }
     Object.keys(this.timeLine).forEach(key => {
       this.caseData.push({
         date: new Date(key),
@@ -488,12 +515,18 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     });
 
     let chart = am4core.create("lineChart", am4charts.XYChart);
+    chart.numberFormatter.numberFormat = "#a";
+    chart.numberFormatter.bigNumberPrefixes = [
+      { "number": 1e+3, "suffix": "K" },
+      { "number": 1e+6, "suffix": "M" },
+      { "number": 1e+9, "suffix": "B" }
+    ];
     // Create axes
     let dateAxis = chart.xAxes.push(new am4charts.DateAxis());
     dateAxis.renderer.minGridDistance = 50;
 
     let valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
-
+    valueAxis.logarithmic = chartType;
     valueAxis.renderer.labels.template.fill = am4core.color("#adb5bd");
     dateAxis.renderer.labels.template.fill = am4core.color("#adb5bd");
 
@@ -510,6 +543,10 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.lineChart = chart;
   }
   loadMap(option) {
+    this.isLoadingMap=true;
+    if (this.mapChart) {
+      this.mapChart.dispose();
+    }
     let color = "#21AFDD";
     if (option == "recovered") {
       color = "#10c469";
@@ -520,12 +557,14 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     }
     let mapData = [];
     this.fuse.list.forEach(element => {
-      mapData.push({
-        id: this.countryCodes[element.country],
-        name: element.country,
-        value: element[option],
-        color: am4core.color(color)
-      });
+      if(element[option]!=0){
+        mapData.push({
+          id: this.countryCodes[element.country],
+          name: element.country,
+          value: element[option],
+          color: am4core.color(color)
+        });
+      }
     });
 
     let chartMap = am4core.create("worldChart", am4maps.MapChart);
@@ -555,6 +594,9 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     circle.propertyFields.fill = "color";
     circle.tooltipText = "{name}: [bold]{value}[/]";
 
+    chartMap.events.on("ready",()=>{
+      this.isLoadingMap = false;
+    })
 
     imageSeries.heatRules.push({
       "target": circle,

@@ -32,18 +32,16 @@ export class CountryComponent implements OnInit {
 
   public timeLine;
 
-  public totalCases;
-  public totalDeaths;
+  public totalCases=0;
+  public totalDeaths=0;
   public totalRecoveries;
-  public totalCritical;
-  public todayCases;
-  public todayDeaths;
-  public activeCases;
-  public casesPer1M;
-  public finishedCases;
+  public totalCritical=0;
+  public todayCases=0;
+  public todayDeaths=0;
+  public activeCases=0;
+  public casesPer1M=0;
+  public finishedCases=0;
 
-  public timer: any;
-  public oldDate = new Date(("2019-12-01"));
 
   constructor(private route: ActivatedRoute, private _getDataService: GetdataService, private zone: NgZone) {}
 
@@ -344,26 +342,8 @@ export class CountryComponent implements OnInit {
     });
   }
 
-  dhms(difference) {
-    var days, hours, mins, secs;
-    days = Math.floor(difference / (60 * 60 * 1000 * 24) * 1);
-    hours = Math.floor((difference % (60 * 60 * 1000 * 24)) / (60 * 60 * 1000) * 1);
-    mins = Math.floor(((difference % (60 * 60 * 1000 * 24)) % (60 * 60 * 1000)) / (60 * 1000) * 1);
-    secs = Math.floor((((difference % (60 * 60 * 1000 * 24)) % (60 * 60 * 1000)) % (60 * 1000)) / 1000 * 1);
-
-    return {
-      days: days,
-      hours: hours,
-      minutes: mins,
-      seconds: secs
-    };
-  }
-
 
   ngOnInit() {
-    setInterval(() => {
-      this.timer = this.dhms(Math.floor((new Date().getTime() - this.oldDate.getTime())));
-    }, 1000);
     let nameTimeline = this.route.snapshot.paramMap.get("name").toLowerCase();
     if (nameTimeline == "usa") {
       nameTimeline = "us";
@@ -453,7 +433,6 @@ export class CountryComponent implements OnInit {
           this.activeCases = getAllData["active"];
           this.casesPer1M = getAllData["casesPerOneMillion"];
           this.finishedCases = this.totalDeaths + this.totalRecoveries;
-
           this.timeLine = getTimelineData;
           this.loadPieChart();
           this.loadLineChart();
@@ -497,12 +476,19 @@ export class CountryComponent implements OnInit {
       deaths: this.totalDeaths
     });
     let chart = am4core.create("lineChart", am4charts.XYChart);
+    chart.numberFormatter.numberFormat = "#a";
+    chart.numberFormatter.bigNumberPrefixes = [
+      { "number": 1e+3, "suffix": "K" },
+      { "number": 1e+6, "suffix": "M" },
+      { "number": 1e+9, "suffix": "B" }
+    ];
+    
     // Create axes
     let dateAxis = chart.xAxes.push(new am4charts.DateAxis());
     dateAxis.renderer.minGridDistance = 50;
 
     let valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
-
+    
     valueAxis.renderer.labels.template.fill = am4core.color("#adb5bd");
     dateAxis.renderer.labels.template.fill = am4core.color("#adb5bd");
 
@@ -516,8 +502,8 @@ export class CountryComponent implements OnInit {
     chart.legend.labels.template.fill = am4core.color("#adb5bd");
 
     chart.cursor = new am4charts.XYCursor();
+    
     this.lineChart = chart;
-
   }
 
 
